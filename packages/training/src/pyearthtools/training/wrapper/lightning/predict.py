@@ -28,6 +28,7 @@ from pyearthtools.data.patterns.utils import parse_root_dir
 
 from pyearthtools.pipeline.controller import Pipeline
 from pyearthtools.training.data.lightning import PipelineLightningDataModule
+from pyearthtools.training.data.fileio import SaveMode
 from pyearthtools.training.wrapper.lightning.wrapper import LightningWrapper
 
 PREDICT_KWARGS = {"enable_progress_bar": False, "logger": None}
@@ -66,6 +67,7 @@ class LightingPrediction(LightningWrapper):
             | PipelineLightningDataModule
         ),
         trainer_kwargs: dict[str, Any] | None = None,
+        datamodule_save_mode: SaveMode = "manifest",
         **kwargs,
     ):
         """
@@ -80,11 +82,21 @@ class LightingPrediction(LightningWrapper):
                 Pipeline to use to get data. Will be converted into a `PipelineLightningDataModule`.
             trainer_kwargs (dict[str, Any] | None, optional):
                 Kwargs to provide to Lightning Trainer. Defaults to None.
+            datamodule_save_mode (SaveMode, optional):
+                Strategy used to persist the temporary datamodule snapshot.
+                Defaults to `"manifest"`.
         """
         path, self.temp_dir = parse_root_dir("temp")
         logging.getLogger("lightning").setLevel(0)
 
-        super().__init__(model, data, path, trainer_kwargs, **kwargs)
+        super().__init__(
+            model,
+            data,
+            path,
+            trainer_kwargs,
+            datamodule_save_mode=datamodule_save_mode,
+            **kwargs,
+        )
         self.record_initialisation(ignore="model")
 
         self.trainer_kwargs.update(PREDICT_KWARGS)

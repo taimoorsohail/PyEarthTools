@@ -25,6 +25,7 @@ from pyearthtools.data.utils import parse_path
 
 from pyearthtools.pipeline.controller import Pipeline
 from pyearthtools.training.data.lightning import PipelineLightningDataModule
+from pyearthtools.training.data.fileio import SaveMode
 from pyearthtools.training.wrapper.wrapper import ModelWrapper
 
 
@@ -58,6 +59,7 @@ class LightningWrapper(ModelWrapper):
         ),
         path: str | Path,
         trainer_kwargs: Optional[dict[str, Any]] = None,
+        datamodule_save_mode: SaveMode = "manifest",
         **kwargs,
     ):
         """
@@ -72,11 +74,19 @@ class LightningWrapper(ModelWrapper):
                 Root path
             trainer_kwargs (Optional[dict[str, Any]], optional):
                 Kwargs for `L.Trainer`. Defaults to None.
+            datamodule_save_mode (SaveMode, optional):
+                Strategy to persist the datamodule configuration under `path`.
+                `yaml` preserves the legacy eager full-object dump, `manifest`
+                writes a lightweight manifest and sidecar payloads for heavy
+                runtime objects, `snapshot` additionally snapshots referenced
+                files into the run directory when possible, and `none` skips
+                datamodule persistence. Defaults to `"manifest"`.
         """
         super().__init__(model, data)
 
         self.path = Path(parse_path(path))
-        self.datamodule.save(self.path / "DataModule")
+        self.datamodule_save_mode = datamodule_save_mode
+        self.save_datamodule()
 
         self._trainer_kwargs = trainer_kwargs or dict(kwargs)
         self._trainer_kwargs["default_root_dir"] = path
@@ -88,6 +98,12 @@ class LightningWrapper(ModelWrapper):
     @property
     def trainer(self) -> L.Trainer:
         return self.get_trainer(**self.trainer_kwargs)
+
+    def save_datamodule(self, path: str | Path | None = None, *, mode: SaveMode | None = None):
+        """Persist the configured datamodule using the selected save mode."""
+        save_mode = self.datamodule_save_mode if mode is None else mode
+        save_path = self.path / "DataModule" if path is None else path
+        return self.datamodule.save(save_path, mode=save_mode)
 
     def get_trainer(self, **kwargs) -> L.Trainer:
         """Get Lightning trainer updated with `kwargs`."""

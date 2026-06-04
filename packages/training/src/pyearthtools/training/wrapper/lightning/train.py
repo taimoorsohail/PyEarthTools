@@ -26,6 +26,7 @@ from lightning.pytorch import loggers
 
 from pyearthtools.pipeline.controller import Pipeline
 from pyearthtools.training.data.lightning import PipelineLightningDataModule
+from pyearthtools.training.data.fileio import SaveMode
 from pyearthtools.training.wrapper.lightning.wrapper import LightningWrapper
 from pyearthtools.training.wrapper.train import TrainingWrapper
 
@@ -87,6 +88,7 @@ class LightingTraining(LightningWrapper, TrainingWrapper):
         path: str | Path,
         trainer_kwargs: dict[str, Any] | None = None,
         *,
+        datamodule_save_mode: SaveMode = "manifest",
         checkpointing: Optional[dict[str, Any] | tuple[dict[str, Any], ...] | bool] = None,
         logger: Optional[str | dict[str, Any] | bool] = None,
         **kwargs,
@@ -103,13 +105,23 @@ class LightingTraining(LightningWrapper, TrainingWrapper):
                 Root path to save logs and checkpoints into.
             trainer_kwargs (dict[str, Any] | None, optional):
                 Kwargs for `L.Trainer`, i.e. `max_epochs`, .... Defaults to None.
+            datamodule_save_mode (SaveMode, optional):
+                Strategy used to persist the datamodule at construction time.
+                Defaults to `"manifest"`.
             checkpointing (Optional[dict[str, Any] | tuple[dict[str, Any], ...] | bool], optional):
                 Checkpointing config, can be True to use default epoch checkpointing, or dictionary of config / tuple of dictionaries. Defaults to None.
             logger (Optional[str | dict[str, Any]], optional):
                 Logging config, can be True to use default `tensorboard` config, or dictionary of config. Defaults to None.
         """
 
-        super().__init__(model, data, path, trainer_kwargs, **kwargs)
+        super().__init__(
+            model,
+            data,
+            path,
+            trainer_kwargs,
+            datamodule_save_mode=datamodule_save_mode,
+            **kwargs,
+        )
         self.record_initialisation(ignore="model")
 
         callbacks: list = self.trainer_kwargs.pop("callbacks", [])

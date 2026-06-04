@@ -202,13 +202,15 @@ class PipelineDataModule(InitialisationRecordingMixin):
             return type(obj)(map(PipelineDataModule.find_shape, obj))
         return obj.shape
 
-    def save(self, path: Optional[str | Path] = None) -> None | str:
+    def save(self, path: Optional[str | Path] = None, *, mode: str = "yaml") -> None | str:
         """
         Save `PipelineDataModule`
 
         Args:
             path (Optional[str | Path], optional):
                 File to save to. If not given return save str. Defaults to None.
+            mode (str, optional):
+                Save mode to use. See `pyearthtools.training.data.fileio.save`.
 
         Returns:
             (Union[None, str]):
@@ -216,7 +218,7 @@ class PipelineDataModule(InitialisationRecordingMixin):
         """
         from pyearthtools.training.data.fileio import save
 
-        return save(self, path)
+        return save(self, path, mode=mode)
 
     @classmethod
     def load(cls, stream: str | Path, **kwargs: Any) -> "PipelineDataModule":
