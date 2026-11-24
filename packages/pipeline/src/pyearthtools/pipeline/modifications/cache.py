@@ -50,6 +50,9 @@ class Cache(PipelineIndex):
         >>> pipeline['2000-01-01T00'] # Data will be cached
     """
 
+    # A cache does not change the data, so `Pipeline.apply(sample)` can skip it
+    skip_in_apply = True
+
     _cache: pyearthtools.data.indexes.FunctionalCacheIndex
 
     def __init__(
@@ -338,6 +341,9 @@ class MemCache(PipelineIndex):
             )
         >>> pipeline['2000-01-01T00'] # Data will be cached to memory
     """
+
+    # A cache does not change the data, so `Pipeline.apply(sample)` can skip it
+    skip_in_apply = True
 
     _cache: pyearthtools.data.indexes.FunctionalMemCacheIndex
 

@@ -39,6 +39,7 @@ from typing import Any, ContextManager, Literal, Union, Optional, Type, overload
 from pathlib import Path
 import functools
 import logging
+import warnings
 
 import builtins
 import graphviz
@@ -54,6 +55,7 @@ from pyearthtools.pipeline import samplers, iterators, filters
 from pyearthtools.pipeline.step import PipelineStep
 from pyearthtools.pipeline.operation import Operation
 from pyearthtools.pipeline.exceptions import PipelineFilterException, ExceptionIgnoreContext
+from pyearthtools.pipeline.warnings import PipelineWarning
 from pyearthtools.pipeline.validation import filter_steps
 from pyearthtools.pipeline.graph import Graphed, format_graph_node
 
@@ -77,6 +79,13 @@ class PipelineIndex(PipelineRecordingMixin, metaclass=ABCMeta):
     """
 
     _pyearthtools_repr = {"ignore": ["args"]}
+
+    # Whether `Pipeline.apply(sample)` may skip this step. `apply` works on an already-retrieved
+    # sample, so it cannot run an index step. Steps that only change *how* data is retrieved,
+    # not the data itself (e.g. caches), can safely be skipped there; steps that need to fetch
+    # more data from upstream (e.g. `TemporalWindow`) cannot, so `apply` raises for them.
+    skip_in_apply: bool = False
+
     _steps: tuple[
         Union[Index, PipelineStep, _Pipeline, PipelineIndex, VALID_PIPELINE_TYPES, tuple[VALID_PIPELINE_TYPES, ...]],
         ...,
@@ -553,24 +562,6 @@ class Pipeline(_Pipeline, Index):
 
         # Apply each pipeline step to the sample, starting from the latest source
         for step in self.steps[step_index + 1 :]:
-            if isinstance(step, PipelineIndex):
-                # A PipelineIndex appearing after the data-source position means the
-                # steps list contains two PipelineIndex objects (e.g. two TemporalWindow
-                # instances).  Only the last one (found by _get_initial_sample's reverse
-                # search) acts as the source; any earlier one would need an idx to
-                # re-retrieve data, which __getitem__ does not support at this point in
-                # the execution path.  Raise a clear error rather than silently
-                # mis-applying the step.
-                raise TypeError(
-                    f"Pipeline.__getitem__ encountered a {type(step).__name__} "
-                    f"({type(step)}) after the data-source position in the step list. "
-                    "Only one PipelineIndex per pipeline is supported: it must be the "
-                    "last step that acts as the data source (found by the reverse search "
-                    "in _get_initial_sample). "
-                    "If you need to chain two PipelineIndex objects, nest the first "
-                    "pipeline (containing the accessor and first PipelineIndex) inside "
-                    "a second Pipeline, then attach the second PipelineIndex to that."
-                )
             if not isinstance(
                 step,
                 (
@@ -622,14 +613,22 @@ class Pipeline(_Pipeline, Index):
         Steps must be one of: PipelineStep, Operation, Pipeline, Transform,
         TransformCollection, or PipelineBranchPoint.
 
-        PipelineIndex steps (e.g. TemporalWindow, SequenceRetrieval) cannot be
-        applied via this method because they operate on an *index* (such as a date
-        string) to retrieve data, not on an existing sample.  If your pipeline
-        contains a PipelineIndex, use ``pipeline[idx]`` instead of
-        ``pipeline.apply(sample)``.  PipelineIndex steps are handled automatically
-        by ``__getitem__`` via ``_get_initial_sample``'s reverse search.
+        PipelineIndex steps operate on an *index* (such as a date string) to retrieve
+        data, not on an existing sample, so they cannot be run here:
+
+        - steps with ``skip_in_apply = True`` (e.g. caches, which do not change the data)
+          are skipped with a ``PipelineWarning``;
+        - all others (e.g. TemporalWindow, SequenceRetrieval, which need to fetch more
+          data from upstream) raise a ``TypeError``. Use ``pipeline[idx]`` instead.
         """
         for step in self.steps:
+            if isinstance(step, PipelineIndex) and step.skip_in_apply:
+                warnings.warn(
+                    f"Pipeline.apply() skipped {type(step).__name__}: it is a PipelineIndex that "
+                    "cannot run on an already-retrieved sample, but skipping it does not change the data.",
+                    PipelineWarning,
+                )
+                continue
             if isinstance(step, PipelineIndex):
                 raise TypeError(
                     f"Pipeline.apply() encountered a {type(step).__name__} "
@@ -639,8 +638,7 @@ class Pipeline(_Pipeline, Index):
                     "called on an already-retrieved sample. "
                     "Use pipeline[idx] instead of pipeline.apply(sample) when your "
                     "pipeline contains a PipelineIndex step such as TemporalWindow or "
-                    "SequenceRetrieval. pipeline[idx] handles PipelineIndex steps "
-                    "automatically via _get_initial_sample."
+                    "SequenceRetrieval, which need to fetch more data from upstream."
                 )
             if not isinstance(
                 step,
